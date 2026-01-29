@@ -15,6 +15,7 @@ const pageConfig: PageConfig = {
   group: {
     'Production': [
       'prod_assistant_neurond',
+      'prod_assistant_neurond_api',
       'prod_assistant_atlas',
       'prod_document_intelligent',
       'prod_meeting_agent',
@@ -22,6 +23,7 @@ const pageConfig: PageConfig = {
     ],
     'Staging': [
       'staging_assistant_neurond',
+      'staging_assistant_neurond_api',
       'staging_document_intelligent',
       'staging_meeting_agent',
       'staging_proposal',
@@ -38,6 +40,18 @@ const workerConfig: WorkerConfig = {
       method: 'GET',
       target: 'https://assistant.neurond.com/',
       statusPageLink: 'https://assistant.neurond.com/',
+      checkProxy: 'worker://apac',
+      checkProxyFallback: true,
+    },
+    {
+      id: 'prod_assistant_neurond_api',
+      name: 'Production Assistant Neurond AI - API',
+      method: 'GET',
+      target: 'https://assistant.neurond.com/api/health/ping',
+      statusPageLink: 'https://assistant.neurond.com/',
+      responseKeyword: 'pong',
+      checkProxy: 'worker://apac',
+      checkProxyFallback: true,
     },
     {
       id: 'prod_assistant_atlas',
@@ -45,6 +59,8 @@ const workerConfig: WorkerConfig = {
       method: 'GET',
       target: 'https://ai.atlasindustries.com/',
       statusPageLink: 'https://ai.atlasindustries.com/',
+      checkProxy: 'worker://apac',
+      checkProxyFallback: true,
     },
     {
       id: 'prod_document_intelligent',
@@ -52,6 +68,8 @@ const workerConfig: WorkerConfig = {
       method: 'GET',
       target: 'https://drparser.neurond.com/',
       statusPageLink: 'https://drparser.neurond.com/',
+      checkProxy: 'worker://apac',
+      checkProxyFallback: true,
     },
     {
       id: 'prod_meeting_agent',
@@ -59,6 +77,8 @@ const workerConfig: WorkerConfig = {
       method: 'GET',
       target: 'https://meeting.neurond.com/',
       statusPageLink: 'https://meeting.neurond.com/',
+      checkProxy: 'worker://apac',
+      checkProxyFallback: true,
     },
     // Temporarily disabled
     // {
@@ -67,6 +87,8 @@ const workerConfig: WorkerConfig = {
     //   method: 'GET',
     //   target: 'https://proposal.neurond.com/',
     //   statusPageLink: 'https://proposal.neurond.com/',
+    //   checkProxy: 'worker://apac',
+    //   checkProxyFallback: true,
     // },
     // === Staging ===
     {
@@ -75,6 +97,18 @@ const workerConfig: WorkerConfig = {
       method: 'GET',
       target: 'https://staging-assistant.neurond.com/',
       statusPageLink: 'https://staging-assistant.neurond.com/',
+      checkProxy: 'worker://apac',
+      checkProxyFallback: true,
+    },
+    {
+      id: 'staging_assistant_neurond_api',
+      name: 'Staging Assistant Neurond AI - API',
+      method: 'GET',
+      target: 'https://staging-assistant.neurond.com/api/health/ping',
+      statusPageLink: 'https://staging-assistant.neurond.com/',
+      responseKeyword: 'pong',
+      checkProxy: 'worker://apac',
+      checkProxyFallback: true,
     },
     {
       id: 'staging_document_intelligent',
@@ -82,6 +116,8 @@ const workerConfig: WorkerConfig = {
       method: 'GET',
       target: 'https://drparser-staging.neurond.com/',
       statusPageLink: 'https://drparser-staging.neurond.com/',
+      checkProxy: 'worker://apac',
+      checkProxyFallback: true,
     },
     {
       id: 'staging_meeting_agent',
@@ -89,6 +125,8 @@ const workerConfig: WorkerConfig = {
       method: 'GET',
       target: 'https://meeting-staging.neurond.com/',
       statusPageLink: 'https://meeting-staging.neurond.com/',
+      checkProxy: 'worker://apac',
+      checkProxyFallback: true,
     },
     {
       id: 'staging_proposal',
@@ -96,6 +134,8 @@ const workerConfig: WorkerConfig = {
       method: 'GET',
       target: 'https://proposal-staging.neurond.com/',
       statusPageLink: 'https://proposal-staging.neurond.com/',
+      checkProxy: 'worker://apac',
+      checkProxyFallback: true,
     },
   ],
   notification: {
