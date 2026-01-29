@@ -11,13 +11,14 @@ const pageConfig: PageConfig = {
     { link: 'https://neurond.com', label: 'Neurond AI' },
     { link: 'https://github.com/Neurond-AI', label: 'GitHub' },
   ],
+  customFooter: '',
   group: {
     'Production': [
       'prod_assistant_neurond',
       'prod_assistant_atlas',
       'prod_document_intelligent',
       'prod_meeting_agent',
-      'prod_proposal',
+      // 'prod_proposal',
     ],
     'Staging': [
       'staging_assistant_neurond',
@@ -59,13 +60,14 @@ const workerConfig: WorkerConfig = {
       target: 'https://meeting.neurond.com/',
       statusPageLink: 'https://meeting.neurond.com/',
     },
-    {
-      id: 'prod_proposal',
-      name: 'Production Proposal',
-      method: 'GET',
-      target: 'https://proposal.neurond.com/',
-      statusPageLink: 'https://proposal.neurond.com/',
-    },
+    // Temporarily disabled
+    // {
+    //   id: 'prod_proposal',
+    //   name: 'Production Proposal',
+    //   method: 'GET',
+    //   target: 'https://proposal.neurond.com/',
+    //   statusPageLink: 'https://proposal.neurond.com/',
+    // },
     // === Staging ===
     {
       id: 'staging_assistant_neurond',
@@ -99,36 +101,14 @@ const workerConfig: WorkerConfig = {
   notification: {
     // Multiple webhooks: Microsoft Teams + Outlook Email (via Power Automate)
     webhook: [
-      // Microsoft Teams - Incoming Webhook via Workflows
+      // Microsoft Teams - via Power Automate HTTP trigger
       {
-        url: 'YOUR_TEAMS_WORKFLOW_WEBHOOK_URL',
+        url: 'YOUR_TEAMS_POWER_AUTOMATE_FLOW_URL',
         method: 'POST',
         payloadType: 'json',
         payload: {
-          type: 'message',
-          attachments: [
-            {
-              contentType: 'application/vnd.microsoft.card.adaptive',
-              content: {
-                type: 'AdaptiveCard',
-                $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
-                version: '1.4',
-                body: [
-                  {
-                    type: 'TextBlock',
-                    text: 'Neurond AI - Service Alert',
-                    weight: 'Bolder',
-                    size: 'Medium',
-                  },
-                  {
-                    type: 'TextBlock',
-                    text: '$MSG',
-                    wrap: true,
-                  },
-                ],
-              },
-            },
-          ],
+          title: 'Neurond AI - Service Alert',
+          message: '$MSG',
         },
       },
       // Outlook Email - via Power Automate HTTP trigger

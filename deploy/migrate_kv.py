@@ -19,6 +19,11 @@ r = requests.get(
 ).json()
 
 if not r['success']:
+    # If token lacks KV permission, there's nothing to migrate — skip gracefully
+    error_code = r.get('errors', [{}])[0].get('code', 0)
+    if error_code == 10000:
+        print("No KV Storage permission on API token. Assuming fresh deployment with no KV data to migrate. Skipping.")
+        exit(0)
     print("Error fetching KV namespace info: ", r)
     exit(1)
 
