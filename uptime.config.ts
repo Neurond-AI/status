@@ -6,101 +6,144 @@
 import { MaintenanceConfig, PageConfig, WorkerConfig } from './types/config'
 
 const pageConfig: PageConfig = {
-  // Title for your status page
-  title: "lyc8503's Status Page",
-  // Links shown at the header of your status page, could set `highlight` to `true`
+  title: 'Status Neurond AI',
   links: [
-    { link: 'https://github.com/lyc8503', label: 'GitHub' },
-    { link: 'https://blog.lyc8503.net/', label: 'Blog' },
-    { link: 'mailto:me@lyc8503.net', label: 'Email Me', highlight: true },
+    { link: 'https://neurond.com', label: 'Neurond AI' },
+    { link: 'https://github.com/Neurond-AI', label: 'GitHub' },
   ],
+  group: {
+    'Production': [
+      'prod_assistant_neurond',
+      'prod_assistant_atlas',
+      'prod_document_intelligent',
+      'prod_meeting_agent',
+      'prod_proposal',
+    ],
+    'Staging': [
+      'staging_assistant_neurond',
+      'staging_document_intelligent',
+      'staging_meeting_agent',
+      'staging_proposal',
+    ],
+  },
 }
 
 const workerConfig: WorkerConfig = {
-  // Define all your monitors here
   monitors: [
-    // Example HTTP Monitor
+    // === Production ===
     {
-      // `id` should be unique, history will be kept if the `id` remains constant
-      id: 'foo_monitor',
-      // `name` is used at status page and callback message
-      name: 'My API Monitor',
-      // `method` should be a valid HTTP Method
+      id: 'prod_assistant_neurond',
+      name: 'Production Assistant Neurond AI',
       method: 'GET',
-      // `target` is a valid URL
-      target: 'https://example.com',
-      // [OPTIONAL] `tooltip` is ONLY used at status page to show a tooltip
-      tooltip: 'This is a tooltip for this monitor',
-      // [OPTIONAL] `statusPageLink` is ONLY used for clickable link at status page
-      statusPageLink: 'https://example.com',
-      // [OPTIONAL] `expectedCodes` is an array of acceptable HTTP response codes, if not specified, default to 2xx
-      expectedCodes: [200],
-      // [OPTIONAL] `timeout` in millisecond, if not specified, default to 10000
-      timeout: 10000,
-      // [OPTIONAL] headers to be sent
-      headers: {
-        'User-Agent': 'Uptimeflare',
-        Authorization: 'Bearer YOUR_TOKEN_HERE',
-      },
-      // [OPTIONAL] body to be sent (require POST/PUT/PATCH method)
-      // body: 'Hello, world!',
-      // [OPTIONAL] if specified, the response must contains the keyword to be considered as operational.
-      // responseKeyword: 'success',
-      // [OPTIONAL] if specified, the response must NOT contains the keyword to be considered as operational.
-      // responseForbiddenKeyword: 'bad gateway',
-      // [OPTIONAL] if specified, will call the check proxy to check the monitor, mainly for geo-specific checks
-      // refer to docs https://github.com/lyc8503/UptimeFlare/wiki/Check-proxy-setup before setting this value
-      // currently supports `worker://`, `globalping://` and `http(s)://` proxies
-      // checkProxy: 'worker://weur',
-      // [OPTIONAL] if true, the check will fallback to local if the specified proxy is down
-      // checkProxyFallback: true,
+      target: 'https://assistant.neurond.com/',
+      statusPageLink: 'https://assistant.neurond.com/',
     },
-    // Example TCP Monitor
     {
-      id: 'test_tcp_monitor',
-      name: 'Example TCP Monitor',
-      // `method` should be `TCP_PING` for tcp monitors
-      method: 'TCP_PING',
-      // `target` should be `host:port` for tcp monitors
-      target: '1.2.3.4:22',
-      tooltip: 'My production server SSH',
-      statusPageLink: 'https://example.com',
-      timeout: 5000,
+      id: 'prod_assistant_atlas',
+      name: 'Production Assistant Atlas',
+      method: 'GET',
+      target: 'https://ai.atlasindustries.com/',
+      statusPageLink: 'https://ai.atlasindustries.com/',
+    },
+    {
+      id: 'prod_document_intelligent',
+      name: 'Production Document Intelligent',
+      method: 'GET',
+      target: 'https://drparser.neurond.com/',
+      statusPageLink: 'https://drparser.neurond.com/',
+    },
+    {
+      id: 'prod_meeting_agent',
+      name: 'Production Meeting Agent',
+      method: 'GET',
+      target: 'https://meeting.neurond.com/',
+      statusPageLink: 'https://meeting.neurond.com/',
+    },
+    {
+      id: 'prod_proposal',
+      name: 'Production Proposal',
+      method: 'GET',
+      target: 'https://proposal.neurond.com/',
+      statusPageLink: 'https://proposal.neurond.com/',
+    },
+    // === Staging ===
+    {
+      id: 'staging_assistant_neurond',
+      name: 'Staging Assistant Neurond AI',
+      method: 'GET',
+      target: 'https://staging-assistant.neurond.com/',
+      statusPageLink: 'https://staging-assistant.neurond.com/',
+    },
+    {
+      id: 'staging_document_intelligent',
+      name: 'Staging Document Intelligent',
+      method: 'GET',
+      target: 'https://drparser-staging.neurond.com/',
+      statusPageLink: 'https://drparser-staging.neurond.com/',
+    },
+    {
+      id: 'staging_meeting_agent',
+      name: 'Staging Meeting Agent',
+      method: 'GET',
+      target: 'https://meeting-staging.neurond.com/',
+      statusPageLink: 'https://meeting-staging.neurond.com/',
+    },
+    {
+      id: 'staging_proposal',
+      name: 'Staging Proposal',
+      method: 'GET',
+      target: 'https://proposal-staging.neurond.com/',
+      statusPageLink: 'https://proposal-staging.neurond.com/',
     },
   ],
-  // [Optional] Notification settings
   notification: {
-    // [Optional] Notification webhook settings, if not specified, no notification will be sent
-    // More info at Wiki: https://github.com/lyc8503/UptimeFlare/wiki/Setup-notification
-    webhook: {
-      // [Required] webhook URL (example: Telegram Bot API)
-      url: 'https://api.telegram.org/bot123456:ABCDEF/sendMessage',
-      // [Optional] HTTP method, default to 'GET' for payloadType=param, 'POST' otherwise
-      // method: 'POST',
-      // [Optional] headers to be sent
-      // headers: {
-      //   foo: 'bar',
-      // },
-      // [Required] Specify how to encode the payload
-      // Should be one of 'param', 'json' or 'x-www-form-urlencoded'
-      // 'param': append url-encoded payload to URL search parameters
-      // 'json': POST json payload as body, set content-type header to 'application/json'
-      // 'x-www-form-urlencoded': POST url-encoded payload as body, set content-type header to 'x-www-form-urlencoded'
-      payloadType: 'x-www-form-urlencoded',
-      // [Required] payload to be sent
-      // $MSG will be replaced with the human-readable notification message
-      payload: {
-        chat_id: 12345678,
-        text: '$MSG',
+    // Multiple webhooks: Microsoft Teams + Outlook Email (via Power Automate)
+    webhook: [
+      // Microsoft Teams - Incoming Webhook via Workflows
+      {
+        url: 'YOUR_TEAMS_WORKFLOW_WEBHOOK_URL',
+        method: 'POST',
+        payloadType: 'json',
+        payload: {
+          type: 'message',
+          attachments: [
+            {
+              contentType: 'application/vnd.microsoft.card.adaptive',
+              content: {
+                type: 'AdaptiveCard',
+                $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+                version: '1.4',
+                body: [
+                  {
+                    type: 'TextBlock',
+                    text: 'Neurond AI - Service Alert',
+                    weight: 'Bolder',
+                    size: 'Medium',
+                  },
+                  {
+                    type: 'TextBlock',
+                    text: '$MSG',
+                    wrap: true,
+                  },
+                ],
+              },
+            },
+          ],
+        },
       },
-      // [Optional] timeout calling this webhook, in millisecond, default to 5000
-      timeout: 10000,
-    },
-    // [Optional] timezone used in notification messages, default to "Etc/GMT"
-    timeZone: 'Asia/Shanghai',
-    // [Optional] grace period in minutes before sending a notification
-    // notification will be sent only if the monitor is down for N continuous checks after the initial failure
-    // if not specified, notification will be sent immediately
+      // Outlook Email - via Power Automate HTTP trigger
+      {
+        url: 'YOUR_POWER_AUTOMATE_EMAIL_FLOW_URL',
+        method: 'POST',
+        payloadType: 'json',
+        payload: {
+          to: 'your-team@neurond.com',
+          subject: 'Neurond AI - Service Status Alert',
+          body: '$MSG',
+        },
+      },
+    ],
+    timeZone: 'Asia/Ho_Chi_Minh',
     gracePeriod: 5,
   },
 }
@@ -112,23 +155,7 @@ const workerConfig: WorkerConfig = {
 
 // const maintenances: MaintenanceConfig[] = []
 
-const maintenances: MaintenanceConfig[] = [
-  {
-    // [Optional] Monitor IDs to be affected by this maintenance
-    monitors: ['foo_monitor', 'bar_monitor'],
-    // [Optional] default to "Scheduled Maintenance" if not specified
-    title: 'Test Maintenance',
-    // Description of the maintenance, will be shown at status page
-    body: 'This is a test maintenance, server software upgrade',
-    // Start time of the maintenance, in UNIX timestamp or ISO 8601 format
-    start: '2020-01-01T00:00:00+08:00',
-    // [Optional] end time of the maintenance, in UNIX timestamp or ISO 8601 format
-    // if not specified, the maintenance will be considered as on-going
-    end: '2050-01-01T00:00:00+08:00',
-    // [Optional] color of the maintenance alert at status page, default to "yellow"
-    color: 'blue',
-  },
-]
+const maintenances: MaintenanceConfig[] = []
 
 // Don't edit this line
 export { maintenances, pageConfig, workerConfig }
