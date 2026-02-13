@@ -37,9 +37,8 @@ const pageConfig: PageConfig = {
 // Microsoft Teams Notification Configuration
 // =============================================
 
-// MS Teams Incoming Webhook URL
-const TEAMS_WEBHOOK_URL =
-  'https://orientsoftware365.webhook.office.com/webhookb2/cdb1ebbe-14fe-4442-9444-c95d85378426@f15dd8d1-822a-4009-bdbf-57951d225a99/IncomingWebhook/627b2418e6cc40f18098152ad51830b9/c1e57188-f4cf-4db1-aaba-5f3d0c75a25d/V2Wg08GpR5Q5jp3r-b01Wqf3XT6z6pqqA5isg1Dny720w1'
+// MS Teams Incoming Webhook URL is stored as a Cloudflare Worker secret (env.TEAMS_WEBHOOK_URL)
+// Managed via GitHub secret → Terraform variable → Worker secret_text binding (see deploy.tf)
 
 // Grace period in minutes before sending DOWN notification
 // Must match the notification.gracePeriod value below
@@ -84,6 +83,7 @@ const MONITOR_MENTIONS: Record<string, Array<{ name: string; email: string }>> =
 
 // Build and send an Adaptive Card notification to MS Teams with @mentions
 async function sendTeamsNotification(
+  webhookUrl: string,
   monitor: MonitorTarget,
   isUp: boolean,
   timeIncidentStart: number,
@@ -200,7 +200,7 @@ async function sendTeamsNotification(
   }
 
   try {
-    const resp = await fetch(TEAMS_WEBHOOK_URL, {
+    const resp = await fetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -384,8 +384,13 @@ const workerConfig: WorkerConfig = {
   },
   callbacks: {
     // Send UP (recovery) notification to MS Teams
-    onStatusChange: async (_env, monitor, isUp, timeIncidentStart, timeNow, reason) => {
+    onStatusChange: async (env, monitor, isUp, timeIncidentStart, timeNow, reason) => {
       if (!isUp) return // DOWN is handled by onIncident below
+
+      if (!env.TEAMS_WEBHOOK_URL) {
+        console.log('Teams: TEAMS_WEBHOOK_URL secret not set, skipping notification')
+        return
+      }
 
       // Only send recovery notification if the incident lasted longer than
       // the grace period (meaning we already sent a DOWN notification)
@@ -401,12 +406,12 @@ const workerConfig: WorkerConfig = {
         return
       }
 
-      await sendTeamsNotification(monitor, true, timeIncidentStart, timeNow, reason)
+      await sendTeamsNotification(env.TEAMS_WEBHOOK_URL, monitor, true, timeIncidentStart, timeNow, reason)
     },
 
     // Send DOWN notification to MS Teams (respects grace period)
     // onIncident fires every minute while a monitor is down
-    onIncident: async (_env, monitor, timeIncidentStart, timeNow, reason) => {
+    onIncident: async (env, monitor, timeIncidentStart, timeNow, reason) => {
       const downtimeSecs = timeNow - timeIncidentStart
 
       // Only send at the grace period boundary (±30s window for timing drift)
@@ -418,12 +423,17 @@ const workerConfig: WorkerConfig = {
         return
       }
 
+      if (!env.TEAMS_WEBHOOK_URL) {
+        console.log('Teams: TEAMS_WEBHOOK_URL secret not set, skipping notification')
+        return
+      }
+
       if (shouldSkipTeamsNotification(monitor.id, timeNow)) {
         console.log(`Teams: skipping DOWN notification for ${monitor.name} (skip/maintenance)`)
         return
       }
 
-      await sendTeamsNotification(monitor, false, timeIncidentStart, timeNow, reason)
+      await sendTeamsNotification(env.TEAMS_WEBHOOK_URL, monitor, false, timeIncidentStart, timeNow, reason)
     },
   },
 }
