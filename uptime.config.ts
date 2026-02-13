@@ -38,7 +38,7 @@ const pageConfig: PageConfig = {
 // =============================================
 
 // MS Teams Incoming Webhook URL is stored as a Cloudflare Worker secret (env.TEAMS_WEBHOOK_URL)
-// Set it via: npx wrangler secret put TEAMS_WEBHOOK_URL
+// Managed via GitHub secret → Terraform variable → Worker secret_text binding (see deploy.tf)
 
 // Grace period in minutes before sending DOWN notification
 // Must match the notification.gracePeriod value below
