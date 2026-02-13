@@ -9,6 +9,7 @@ import pLimit from 'p-limit'
 export interface Env {
   REMOTE_CHECKER_DO: DurableObjectNamespace<RemoteChecker>
   UPTIMEFLARE_D1: D1Database
+  TEAMS_WEBHOOK_URL: string
 }
 
 const Worker = {
