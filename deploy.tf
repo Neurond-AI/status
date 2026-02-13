@@ -21,6 +21,12 @@ variable "enable_do_migration" {
   default = false
 }
 
+variable "TEAMS_WEBHOOK_URL" {
+  type      = string
+  sensitive = true
+  default   = ""
+}
+
 resource "cloudflare_d1_database" "uptimeflare_d1" {
   account_id            = var.CLOUDFLARE_ACCOUNT_ID
   name                  = "uptimeflare_d1"
@@ -59,6 +65,10 @@ resource "cloudflare_workers_script" "uptimeflare_worker" {
     name = "UPTIMEFLARE_D1"
     type = "d1"
     id   = cloudflare_d1_database.uptimeflare_d1.id
+    }, {
+    name = "TEAMS_WEBHOOK_URL"
+    type = "secret_text"
+    text = var.TEAMS_WEBHOOK_URL
   }]
 }
 
