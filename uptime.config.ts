@@ -114,68 +114,80 @@ async function sendTeamsNotification(
   const timeNowFormatted = dateFormatter.format(new Date(timeNow * 1000))
   const timeStartFormatted = dateFormatter.format(new Date(timeIncidentStart * 1000))
 
+  // Detect environment from monitor ID
+  const environment = monitor.id.startsWith('staging_') ? 'Staging' : 'Production'
+
   // Build Adaptive Card body
   const body: any[] = []
 
+  // Header container with colored background
+  body.push({
+    type: 'Container',
+    style: isUp ? 'good' : 'attention',
+    bleed: true,
+    items: [
+      {
+        type: 'TextBlock',
+        size: 'Large',
+        weight: 'Bolder',
+        text: isUp ? '✅ Service Recovered' : '🔴 Service Down',
+        wrap: true,
+      },
+      {
+        type: 'TextBlock',
+        text: monitor.name,
+        wrap: true,
+        spacing: 'Small',
+      },
+    ],
+  })
+
+  // Details section
   if (isUp) {
-    body.push(
-      {
-        type: 'TextBlock',
-        size: 'Large',
-        weight: 'Bolder',
-        text: '✅ Service Recovered',
-        color: 'Good',
-        wrap: true,
-      },
-      {
-        type: 'FactSet',
-        facts: [
-          { title: 'Service', value: monitor.name },
-          { title: 'Status', value: 'UP - Recovered' },
-          { title: 'Downtime', value: `${downtimeDuration} minutes` },
-          { title: 'Recovered at', value: timeNowFormatted },
-        ],
-      },
-    )
+    body.push({
+      type: 'FactSet',
+      separator: true,
+      spacing: 'Medium',
+      facts: [
+        { title: 'Environment', value: environment },
+        { title: 'Status', value: 'UP - Recovered' },
+        { title: 'Downtime', value: `${downtimeDuration} minutes` },
+        { title: 'Recovered at', value: timeNowFormatted },
+      ],
+    })
   } else {
-    body.push(
-      {
-        type: 'TextBlock',
-        size: 'Large',
-        weight: 'Bolder',
-        text: '🔴 Service Down',
-        color: 'Attention',
-        wrap: true,
-      },
-      {
-        type: 'FactSet',
-        facts: [
-          { title: 'Service', value: monitor.name },
-          { title: 'Status', value: 'DOWN' },
-          { title: 'Since', value: timeStartFormatted },
-          { title: 'Duration', value: `${downtimeDuration} minutes` },
-          { title: 'Issue', value: reason || 'unspecified' },
-        ],
-      },
-    )
+    body.push({
+      type: 'FactSet',
+      separator: true,
+      spacing: 'Medium',
+      facts: [
+        { title: 'Environment', value: environment },
+        { title: 'Status', value: 'DOWN' },
+        { title: 'Since', value: timeStartFormatted },
+        { title: 'Duration', value: `${downtimeDuration} minutes` },
+        { title: 'Issue', value: reason || 'unspecified' },
+      ],
+    })
   }
 
-  // Add @mentions section
+  // @mentions section
   if (mentionText) {
     body.push({
       type: 'TextBlock',
       wrap: true,
       separator: true,
+      spacing: 'Medium',
       text: `**Maintainers:** ${mentionText}`,
     })
   }
 
-  // Add status page link
+  // Assemble actions (status page button)
+  const actions: any[] = []
   if (monitor.statusPageLink) {
-    body.push({
-      type: 'TextBlock',
-      wrap: true,
-      text: `[View Status Page](${monitor.statusPageLink})`,
+    actions.push({
+      type: 'Action.OpenUrl',
+      title: 'View Status Page',
+      url: monitor.statusPageLink,
     })
   }
 
@@ -191,6 +203,7 @@ async function sendTeamsNotification(
           $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
           version: '1.4',
           body,
+          actions,
           msteams: {
             entities: mentionEntities,
           },
