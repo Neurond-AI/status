@@ -286,9 +286,9 @@ async function sendGroupedTeamsNotification(
     timeZone: 'Asia/Ho_Chi_Minh',
   })
 
-  const environments = [...new Set(items.map((item) =>
+  const environments = Array.from(new Set(items.map((item) =>
     item.monitor.id.startsWith('staging_') ? 'Staging' : 'Production'
-  ))]
+  )))
   const environmentLabel = environments.length === 1 ? environments[0] : environments.join(' & ')
 
   const body: any[] = []
@@ -383,9 +383,9 @@ async function sendGroupedTeamsNotification(
 
   // Actions: single status page button if all monitors share the same link
   const actions: any[] = []
-  const statusPageLinks = [...new Set(
+  const statusPageLinks = Array.from(new Set(
     items.map((item) => item.monitor.statusPageLink).filter(Boolean) as string[]
-  )]
+  ))
   if (statusPageLinks.length === 1) {
     actions.push({
       type: 'Action.OpenUrl',
