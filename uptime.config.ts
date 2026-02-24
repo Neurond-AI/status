@@ -662,20 +662,22 @@ const workerConfig: WorkerConfig = {
       console.log(`Teams: processing ${notificationQueue.length} queued notification(s)`)
 
       // Group by (sorted maintainer emails + UP/DOWN direction)
-      const groups = new Map<string, NotificationQueueItem[]>()
+      const groups: Record<string, NotificationQueueItem[]> = {}
       for (const item of notificationQueue) {
         const maintainers = MONITOR_MENTIONS[item.monitor.id] || MONITOR_MENTIONS['default'] || []
         const maintainerKey = maintainers.map((m) => m.email).sort().join(',')
         const groupKey = `${maintainerKey}|${item.isUp ? 'UP' : 'DOWN'}`
 
-        if (!groups.has(groupKey)) {
-          groups.set(groupKey, [])
+        if (!groups[groupKey]) {
+          groups[groupKey] = []
         }
-        groups.get(groupKey)!.push(item)
+        groups[groupKey].push(item)
       }
 
       // Send one card per group
-      for (const [groupKey, items] of groups) {
+      const groupKeys = Object.keys(groups)
+      for (const groupKey of groupKeys) {
+        const items = groups[groupKey]
         try {
           if (items.length === 1) {
             // Single monitor: use existing card format (unchanged visual)
