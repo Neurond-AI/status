@@ -88,7 +88,17 @@ const MONITOR_MENTIONS: Record<string, Array<{ name: string; email: string }>> =
   'default': [MINH, QUYEN],
 }
 
-// Build and send an Adaptive Card notification to MS Teams with @mentions
+// Notification queue: accumulates events during a single cron cycle, flushed by onAllChecksComplete
+type NotificationQueueItem = {
+  monitor: MonitorTarget
+  isUp: boolean
+  timeIncidentStart: number
+  timeNow: number
+  reason: string
+}
+let notificationQueue: NotificationQueueItem[] = []
+
+// Build and send an Adaptive Card notification to MS Teams with @mentions (single monitor)
 async function sendTeamsNotification(
   webhookUrl: string,
   monitor: MonitorTarget,
@@ -248,6 +258,177 @@ function shouldSkipTeamsNotification(monitorId: string, timeNow: number): boolea
       m.monitors?.includes(monitorId),
   )
   return inMaintenance
+}
+
+// Build and send a grouped Adaptive Card for multiple monitors sharing the same maintainers
+async function sendGroupedTeamsNotification(
+  webhookUrl: string,
+  items: NotificationQueueItem[],
+) {
+  const isUp = items[0].isUp
+  const firstMonitor = items[0].monitor
+
+  const maintainers = MONITOR_MENTIONS[firstMonitor.id] || MONITOR_MENTIONS['default'] || []
+
+  const mentionEntities = maintainers.map((m) => ({
+    type: 'mention',
+    text: `<at>${m.name}</at>`,
+    mentioned: { id: m.email, name: m.name },
+  }))
+  const mentionText = maintainers.map((m) => `<at>${m.name}</at>`).join(', ')
+
+  const dateFormatter = new Intl.DateTimeFormat('en-US', {
+    month: 'numeric',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Asia/Ho_Chi_Minh',
+  })
+
+  const environments = [...new Set(items.map((item) =>
+    item.monitor.id.startsWith('staging_') ? 'Staging' : 'Production'
+  ))]
+  const environmentLabel = environments.length === 1 ? environments[0] : environments.join(' & ')
+
+  const body: any[] = []
+
+  // Header
+  body.push({
+    type: 'Container',
+    style: isUp ? 'good' : 'attention',
+    bleed: true,
+    items: [
+      {
+        type: 'TextBlock',
+        size: 'Large',
+        weight: 'Bolder',
+        text: isUp
+          ? `✅ ${items.length} Services Recovered`
+          : `🔴 ${items.length} Services Down`,
+        wrap: true,
+      },
+      {
+        type: 'TextBlock',
+        text: `${environmentLabel} — ${items.length} monitors affected`,
+        wrap: true,
+        spacing: 'Small',
+      },
+    ],
+  })
+
+  // Per-monitor detail blocks
+  for (const item of items) {
+    const downtimeDuration = Math.round((item.timeNow - item.timeIncidentStart) / 60)
+    const environment = item.monitor.id.startsWith('staging_') ? 'Staging' : 'Production'
+
+    if (isUp) {
+      body.push({
+        type: 'Container',
+        separator: true,
+        spacing: 'Medium',
+        items: [
+          {
+            type: 'TextBlock',
+            weight: 'Bolder',
+            text: item.monitor.name,
+            wrap: true,
+          },
+          {
+            type: 'FactSet',
+            facts: [
+              { title: 'Environment', value: environment },
+              { title: 'Downtime', value: `${downtimeDuration} minutes` },
+              { title: 'Recovered at', value: dateFormatter.format(new Date(item.timeNow * 1000)) },
+            ],
+          },
+        ],
+      })
+    } else {
+      body.push({
+        type: 'Container',
+        separator: true,
+        spacing: 'Medium',
+        items: [
+          {
+            type: 'TextBlock',
+            weight: 'Bolder',
+            text: item.monitor.name,
+            wrap: true,
+          },
+          {
+            type: 'FactSet',
+            facts: [
+              { title: 'Environment', value: environment },
+              { title: 'Since', value: dateFormatter.format(new Date(item.timeIncidentStart * 1000)) },
+              { title: 'Duration', value: `${downtimeDuration} minutes` },
+              { title: 'Issue', value: item.reason || 'unspecified' },
+            ],
+          },
+        ],
+      })
+    }
+  }
+
+  // @mentions
+  if (mentionText) {
+    body.push({
+      type: 'TextBlock',
+      wrap: true,
+      separator: true,
+      spacing: 'Medium',
+      text: `**Maintainers:** ${mentionText}`,
+    })
+  }
+
+  // Actions: single status page button if all monitors share the same link
+  const actions: any[] = []
+  const statusPageLinks = [...new Set(
+    items.map((item) => item.monitor.statusPageLink).filter(Boolean) as string[]
+  )]
+  if (statusPageLinks.length === 1) {
+    actions.push({
+      type: 'Action.OpenUrl',
+      title: 'View Status Page',
+      url: statusPageLinks[0],
+    })
+  }
+
+  const payload = {
+    type: 'message',
+    attachments: [
+      {
+        contentType: 'application/vnd.microsoft.card.adaptive',
+        contentUrl: null,
+        content: {
+          type: 'AdaptiveCard',
+          $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+          version: '1.4',
+          body,
+          actions,
+          msteams: {
+            entities: mentionEntities,
+          },
+        },
+      },
+    ],
+  }
+
+  const monitorNames = items.map((i) => i.monitor.name).join(', ')
+  try {
+    const resp = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!resp.ok) {
+      console.log(`Teams grouped webhook error for [${monitorNames}]: ${resp.status} - ${await resp.text()}`)
+    } else {
+      console.log(`Teams grouped notification sent for [${monitorNames}]: ${resp.status}`)
+    }
+  } catch (e) {
+    console.log(`Teams grouped notification error for [${monitorNames}]: ${e}`)
+  }
 }
 
 // You can define multiple maintenances here
@@ -423,16 +604,11 @@ const workerConfig: WorkerConfig = {
     skipNotificationIds: SKIP_NOTIFICATION_IDS,
   },
   callbacks: {
-    // Send UP (recovery) notification to MS Teams
+    // Queue UP (recovery) notification — sent in batch by onAllChecksComplete
     onStatusChange: async (env, monitor, isUp, timeIncidentStart, timeNow, reason) => {
       if (!isUp) return // DOWN is handled by onIncident below
 
-      if (!env.TEAMS_WEBHOOK_URL) {
-        console.log('Teams: TEAMS_WEBHOOK_URL secret not set, skipping notification')
-        return
-      }
-
-      // Only send recovery notification if the incident lasted longer than
+      // Only queue recovery notification if the incident lasted longer than
       // the grace period (meaning we already sent a DOWN notification)
       if (timeNow - timeIncidentStart < (NOTIFICATION_GRACE_PERIOD + 1) * 60 - 30) {
         console.log(
@@ -446,25 +622,21 @@ const workerConfig: WorkerConfig = {
         return
       }
 
-      await sendTeamsNotification(env.TEAMS_WEBHOOK_URL, monitor, true, timeIncidentStart, timeNow, reason)
+      notificationQueue.push({ monitor, isUp: true, timeIncidentStart, timeNow, reason })
+      console.log(`Teams: queued UP notification for ${monitor.name}`)
     },
 
-    // Send DOWN notification to MS Teams (respects grace period)
+    // Queue DOWN notification — sent in batch by onAllChecksComplete
     // onIncident fires every minute while a monitor is down
     onIncident: async (env, monitor, timeIncidentStart, timeNow, reason) => {
       const downtimeSecs = timeNow - timeIncidentStart
 
-      // Only send at the grace period boundary (±30s window for timing drift)
-      // This ensures the notification fires exactly once, ~5 minutes after the incident starts
+      // Only queue at the grace period boundary (±30s window for timing drift)
+      // This ensures the notification is queued exactly once, ~5 minutes after the incident starts
       if (
         downtimeSecs < NOTIFICATION_GRACE_PERIOD * 60 - 30 ||
         downtimeSecs >= NOTIFICATION_GRACE_PERIOD * 60 + 30
       ) {
-        return
-      }
-
-      if (!env.TEAMS_WEBHOOK_URL) {
-        console.log('Teams: TEAMS_WEBHOOK_URL secret not set, skipping notification')
         return
       }
 
@@ -473,7 +645,60 @@ const workerConfig: WorkerConfig = {
         return
       }
 
-      await sendTeamsNotification(env.TEAMS_WEBHOOK_URL, monitor, false, timeIncidentStart, timeNow, reason)
+      notificationQueue.push({ monitor, isUp: false, timeIncidentStart, timeNow, reason })
+      console.log(`Teams: queued DOWN notification for ${monitor.name}`)
+    },
+
+    // Flush all queued notifications as grouped Adaptive Cards
+    onAllChecksComplete: async (env) => {
+      if (notificationQueue.length === 0) return
+
+      if (!env.TEAMS_WEBHOOK_URL) {
+        console.log('Teams: TEAMS_WEBHOOK_URL secret not set, skipping all notifications')
+        notificationQueue = []
+        return
+      }
+
+      console.log(`Teams: processing ${notificationQueue.length} queued notification(s)`)
+
+      // Group by (sorted maintainer emails + UP/DOWN direction)
+      const groups = new Map<string, NotificationQueueItem[]>()
+      for (const item of notificationQueue) {
+        const maintainers = MONITOR_MENTIONS[item.monitor.id] || MONITOR_MENTIONS['default'] || []
+        const maintainerKey = maintainers.map((m) => m.email).sort().join(',')
+        const groupKey = `${maintainerKey}|${item.isUp ? 'UP' : 'DOWN'}`
+
+        if (!groups.has(groupKey)) {
+          groups.set(groupKey, [])
+        }
+        groups.get(groupKey)!.push(item)
+      }
+
+      // Send one card per group
+      for (const [groupKey, items] of groups) {
+        try {
+          if (items.length === 1) {
+            // Single monitor: use existing card format (unchanged visual)
+            const item = items[0]
+            await sendTeamsNotification(
+              env.TEAMS_WEBHOOK_URL,
+              item.monitor,
+              item.isUp,
+              item.timeIncidentStart,
+              item.timeNow,
+              item.reason,
+            )
+          } else {
+            // Multiple monitors: send grouped card
+            await sendGroupedTeamsNotification(env.TEAMS_WEBHOOK_URL, items)
+          }
+        } catch (e) {
+          console.log(`Teams: error sending notification for group [${groupKey}]: ${e}`)
+        }
+      }
+
+      // Clear the queue
+      notificationQueue = []
     },
   },
 }

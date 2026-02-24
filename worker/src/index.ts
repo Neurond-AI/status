@@ -232,6 +232,14 @@ const Worker = {
       statusChanged ||= monitorStatusChanged
     }
 
+    // Flush any batched notifications after all monitors have been processed
+    try {
+      await workerConfig.callbacks?.onAllChecksComplete?.(env)
+    } catch (e) {
+      console.log('Error calling onAllChecksComplete callback: ')
+      console.log(e)
+    }
+
     console.log(
       `statusChanged: ${statusChanged}, lastUpdate: ${state.data.lastUpdate}, currentTime: ${currentTimeSecond}`
     )

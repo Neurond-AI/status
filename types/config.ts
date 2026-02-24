@@ -90,6 +90,7 @@ export type Callbacks<TEnv = Env> = {
     timeNow: number,
     reason: string
   ) => Promise<any> | any
+  onAllChecksComplete?: (env: TEnv) => Promise<any> | any
 }
 
 export type IncidentRecord = {
