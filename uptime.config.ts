@@ -21,6 +21,7 @@ const pageConfig: PageConfig = {
       'prod_meeting_agent',
       'prod_proposal',
       'prod_proposal_api',
+      'prod_docs_neurond',
     ],
     'Staging': [
       'staging_assistant_neurond',
@@ -29,6 +30,7 @@ const pageConfig: PageConfig = {
       'staging_meeting_agent',
       'staging_proposal',
       'staging_proposal_api',
+      'staging_docs_neurond',
     ],
   },
 }
@@ -51,6 +53,7 @@ const SKIP_NOTIFICATION_IDS: string[] = []
 // The 'email' field must be the person's UPN registered in your Microsoft 365 tenant
 const MINH = { name: 'Minh Vo Ngoc Quang', email: 'minh.vo@orientsoftware.com' }
 const QUYEN = { name: 'Quyen Do Duc', email: 'quyen.do@orientsoftware.com' }
+const QUYEN_B = { name: 'Quyen Bui', email: 'quyen.bui@orientsoftware.com' }
 const TRI = { name: 'Tri Le Duc', email: 'tri.le@orientsoftware.com' }
 const SON = { name: 'Son Tran Van', email: 'son.tran@orientsoftware.com' }
 
@@ -77,6 +80,10 @@ const MONITOR_MENTIONS: Record<string, Array<{ name: string; email: string }>> =
   // --- Staging: Proposal (+ Son) ---
   'staging_proposal': [MINH, QUYEN, SON],
   'staging_proposal_api': [MINH, QUYEN, SON],
+  // --- Production: Docs ---
+  'prod_docs_neurond': [MINH, QUYEN, QUYEN_B],
+  // --- Staging: Docs ---
+  'staging_docs_neurond': [MINH, QUYEN, QUYEN_B],
   // --- Fallback ---
   'default': [MINH, QUYEN],
 }
@@ -324,6 +331,16 @@ const workerConfig: WorkerConfig = {
       checkProxy: 'worker://apac',
       checkProxyFallback: true,
     },
+    {
+      id: 'prod_docs_neurond',
+      name: 'Production Docs Neurond AI',
+      method: 'GET',
+      target: 'https://docs.neurond.com/',
+      statusPageLink: 'https://docs.neurond.com/',
+      timeout: 15000,
+      checkProxy: 'worker://apac',
+      checkProxyFallback: true,
+    },
     // === Staging ===
     {
       id: 'staging_assistant_neurond',
@@ -384,6 +401,16 @@ const workerConfig: WorkerConfig = {
       statusPageLink: 'https://proposal-staging.neurond.com/',
       timeout: 15000,
       expectedCodes: [200],
+      checkProxy: 'worker://apac',
+      checkProxyFallback: true,
+    },
+    {
+      id: 'staging_docs_neurond',
+      name: 'Staging Docs Neurond AI',
+      method: 'GET',
+      target: 'https://staging-docs.neurond.com/',
+      statusPageLink: 'https://staging-docs.neurond.com/',
+      timeout: 15000,
       checkProxy: 'worker://apac',
       checkProxyFallback: true,
     },
