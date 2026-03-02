@@ -137,7 +137,7 @@ async function sendTeamsNotification(
   // Build Adaptive Card body
   const body: any[] = []
 
-  // Header container with colored background
+  // Header container with colored background — environment shown prominently
   body.push({
     type: 'Container',
     style: isUp ? 'good' : 'attention',
@@ -147,11 +147,15 @@ async function sendTeamsNotification(
         type: 'TextBlock',
         size: 'Large',
         weight: 'Bolder',
-        text: isUp ? '✅ Service Recovered' : '🔴 Service Down',
+        text: isUp
+          ? `✅ ${environment.toUpperCase()} — Recovered`
+          : `🚨 ${environment.toUpperCase()} — Service Down`,
         wrap: true,
       },
       {
         type: 'TextBlock',
+        size: 'Medium',
+        weight: 'Bolder',
         text: monitor.name,
         wrap: true,
         spacing: 'Small',
@@ -166,10 +170,10 @@ async function sendTeamsNotification(
       separator: true,
       spacing: 'Medium',
       facts: [
-        { title: 'Environment', value: environment },
-        { title: 'Status', value: 'UP - Recovered' },
-        { title: 'Downtime', value: `${downtimeDuration} minutes` },
+        { title: 'Status', value: '🟢 Recovered' },
+        { title: 'Downtime', value: `${downtimeDuration} min` },
         { title: 'Recovered at', value: timeNowFormatted },
+        { title: 'Incident start', value: timeStartFormatted },
       ],
     })
   } else {
@@ -178,11 +182,10 @@ async function sendTeamsNotification(
       separator: true,
       spacing: 'Medium',
       facts: [
-        { title: 'Environment', value: environment },
-        { title: 'Status', value: 'DOWN' },
+        { title: 'Status', value: '🔴 DOWN' },
         { title: 'Since', value: timeStartFormatted },
-        { title: 'Duration', value: `${downtimeDuration} minutes` },
-        { title: 'Issue', value: reason || 'unspecified' },
+        { title: 'Duration', value: `${downtimeDuration} min` },
+        { title: 'Issue', value: reason || 'Unknown' },
       ],
     })
   }
@@ -293,7 +296,7 @@ async function sendGroupedTeamsNotification(
 
   const body: any[] = []
 
-  // Header
+  // Header — environment shown prominently
   body.push({
     type: 'Container',
     style: isUp ? 'good' : 'attention',
@@ -304,13 +307,13 @@ async function sendGroupedTeamsNotification(
         size: 'Large',
         weight: 'Bolder',
         text: isUp
-          ? `✅ ${items.length} Services Recovered`
-          : `🔴 ${items.length} Services Down`,
+          ? `✅ ${environmentLabel.toUpperCase()} — ${items.length} Services Recovered`
+          : `🚨 ${environmentLabel.toUpperCase()} — ${items.length} Services Down`,
         wrap: true,
       },
       {
         type: 'TextBlock',
-        text: `${environmentLabel} — ${items.length} monitors affected`,
+        text: `${items.length} monitors affected`,
         wrap: true,
         spacing: 'Small',
       },
@@ -338,7 +341,7 @@ async function sendGroupedTeamsNotification(
             type: 'FactSet',
             facts: [
               { title: 'Environment', value: environment },
-              { title: 'Downtime', value: `${downtimeDuration} minutes` },
+              { title: 'Downtime', value: `${downtimeDuration} min` },
               { title: 'Recovered at', value: dateFormatter.format(new Date(item.timeNow * 1000)) },
             ],
           },
@@ -361,8 +364,8 @@ async function sendGroupedTeamsNotification(
             facts: [
               { title: 'Environment', value: environment },
               { title: 'Since', value: dateFormatter.format(new Date(item.timeIncidentStart * 1000)) },
-              { title: 'Duration', value: `${downtimeDuration} minutes` },
-              { title: 'Issue', value: item.reason || 'unspecified' },
+              { title: 'Duration', value: `${downtimeDuration} min` },
+              { title: 'Issue', value: item.reason || 'Unknown' },
             ],
           },
         ],
@@ -610,7 +613,7 @@ const workerConfig: WorkerConfig = {
 
       // Only queue recovery notification if the incident lasted longer than
       // the grace period (meaning we already sent a DOWN notification)
-      if (timeNow - timeIncidentStart < (NOTIFICATION_GRACE_PERIOD + 1) * 60 - 30) {
+      if (timeNow - timeIncidentStart < NOTIFICATION_GRACE_PERIOD * 60 - 30) {
         console.log(
           `Teams: skipping UP notification for ${monitor.name} (grace period not met for DOWN)`,
         )
@@ -631,11 +634,11 @@ const workerConfig: WorkerConfig = {
     onIncident: async (env, monitor, timeIncidentStart, timeNow, reason) => {
       const downtimeSecs = timeNow - timeIncidentStart
 
-      // Only queue at the grace period boundary (±30s window for timing drift)
+      // Only queue at the grace period boundary (120s window to tolerate cron timing drift)
       // This ensures the notification is queued exactly once, ~5 minutes after the incident starts
       if (
         downtimeSecs < NOTIFICATION_GRACE_PERIOD * 60 - 30 ||
-        downtimeSecs >= NOTIFICATION_GRACE_PERIOD * 60 + 30
+        downtimeSecs >= NOTIFICATION_GRACE_PERIOD * 60 + 90
       ) {
         return
       }
