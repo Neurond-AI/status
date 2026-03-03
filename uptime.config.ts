@@ -607,49 +607,19 @@ const workerConfig: WorkerConfig = {
     skipNotificationIds: SKIP_NOTIFICATION_IDS,
   },
   callbacks: {
-    // Queue UP (recovery) notification — sent in batch by onAllChecksComplete
+    // Queue DOWN and UP notifications immediately on status change.
+    // onStatusChange fires once per transition (DOWN→UP or UP→DOWN), bypassing the
+    // framework grace period — which is exactly what we want for real-time alerts.
     onStatusChange: async (env, monitor, isUp, timeIncidentStart, timeNow, reason) => {
-      if (!isUp) return // DOWN is handled by onIncident below
-
-      // Only queue recovery notification if the incident lasted longer than
-      // the grace period (meaning we already sent a DOWN notification)
-      if (timeNow - timeIncidentStart < NOTIFICATION_GRACE_PERIOD * 60 - 30) {
+      if (shouldSkipTeamsNotification(monitor.id, timeNow)) {
         console.log(
-          `Teams: skipping UP notification for ${monitor.name} (grace period not met for DOWN)`,
+          `Teams: skipping ${isUp ? 'UP' : 'DOWN'} notification for ${monitor.name} (skip/maintenance)`,
         )
         return
       }
 
-      if (shouldSkipTeamsNotification(monitor.id, timeNow)) {
-        console.log(`Teams: skipping UP notification for ${monitor.name} (skip/maintenance)`)
-        return
-      }
-
-      notificationQueue.push({ monitor, isUp: true, timeIncidentStart, timeNow, reason })
-      console.log(`Teams: queued UP notification for ${monitor.name}`)
-    },
-
-    // Queue DOWN notification — sent in batch by onAllChecksComplete
-    // onIncident fires every minute while a monitor is down
-    onIncident: async (env, monitor, timeIncidentStart, timeNow, reason) => {
-      const downtimeSecs = timeNow - timeIncidentStart
-
-      // Only queue at the grace period boundary (120s window to tolerate cron timing drift)
-      // This ensures the notification is queued exactly once, ~5 minutes after the incident starts
-      if (
-        downtimeSecs < NOTIFICATION_GRACE_PERIOD * 60 - 30 ||
-        downtimeSecs >= NOTIFICATION_GRACE_PERIOD * 60 + 90
-      ) {
-        return
-      }
-
-      if (shouldSkipTeamsNotification(monitor.id, timeNow)) {
-        console.log(`Teams: skipping DOWN notification for ${monitor.name} (skip/maintenance)`)
-        return
-      }
-
-      notificationQueue.push({ monitor, isUp: false, timeIncidentStart, timeNow, reason })
-      console.log(`Teams: queued DOWN notification for ${monitor.name}`)
+      notificationQueue.push({ monitor, isUp, timeIncidentStart, timeNow, reason })
+      console.log(`Teams: queued ${isUp ? 'UP' : 'DOWN'} notification for ${monitor.name}`)
     },
 
     // Flush all queued notifications as grouped Adaptive Cards
