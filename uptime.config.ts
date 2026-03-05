@@ -98,6 +98,12 @@ type NotificationQueueItem = {
 }
 let notificationQueue: NotificationQueueItem[] = []
 
+// Track monitors with an active DOWN notification to deduplicate.
+// The UptimeFlare framework fires onStatusChange not only on UP↔DOWN transitions,
+// but also when the error reason changes while still DOWN (e.g. "timeout" → "connection refused").
+// Without this guard, every error-reason change sends a new DOWN notification.
+const notifiedDownMonitors = new Set<string>()
+
 // Build and send an Adaptive Card notification to MS Teams with @mentions (single monitor)
 async function sendTeamsNotification(
   webhookUrl: string,
@@ -607,15 +613,30 @@ const workerConfig: WorkerConfig = {
     skipNotificationIds: SKIP_NOTIFICATION_IDS,
   },
   callbacks: {
-    // Queue DOWN and UP notifications immediately on status change.
-    // onStatusChange fires once per transition (DOWN→UP or UP→DOWN), bypassing the
-    // framework grace period — which is exactly what we want for real-time alerts.
+    // Queue DOWN and UP notifications on status change.
+    // NOTE: The UptimeFlare framework fires onStatusChange not only on UP↔DOWN transitions
+    // but also when the error reason changes while still DOWN. We use notifiedDownMonitors
+    // to send exactly one DOWN notification per incident and clear it on recovery.
     onStatusChange: async (env, monitor, isUp, timeIncidentStart, timeNow, reason) => {
       if (shouldSkipTeamsNotification(monitor.id, timeNow)) {
         console.log(
           `Teams: skipping ${isUp ? 'UP' : 'DOWN'} notification for ${monitor.name} (skip/maintenance)`,
         )
         return
+      }
+
+      if (!isUp) {
+        // Only send DOWN once per incident — skip error-reason-change duplicates
+        if (notifiedDownMonitors.has(monitor.id)) {
+          console.log(
+            `Teams: skipping duplicate DOWN for ${monitor.name} (error reason changed, already notified)`,
+          )
+          return
+        }
+        notifiedDownMonitors.add(monitor.id)
+      } else {
+        // Clear the dedup flag on recovery
+        notifiedDownMonitors.delete(monitor.id)
       }
 
       notificationQueue.push({ monitor, isUp, timeIncidentStart, timeNow, reason })
