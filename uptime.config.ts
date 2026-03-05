@@ -56,20 +56,21 @@ const QUYEN = { name: 'Quyen Do Duc', email: 'quyen.do@orientsoftware.com' }
 const QUYEN_B = { name: 'Quyen Bui', email: 'quyen.bui@orientsoftware.com' }
 const TRI = { name: 'Tri Le Duc', email: 'tri.le@orientsoftware.com' }
 const SON = { name: 'Son Tran Van', email: 'son.tran@orientsoftware.com' }
+const QUOC = { name: 'Quoc Nguyen Phu', email: 'quoc.nguyenphu@orientsoftware.com' }
 
 const MONITOR_MENTIONS: Record<string, Array<{ name: string; email: string }>> = {
   // --- Production: Assistant Neurond AI ---
-  'prod_assistant_neurond': [MINH, QUYEN],
-  'prod_assistant_neurond_api': [MINH, QUYEN],
+  'prod_assistant_neurond': [MINH, QUYEN, QUOC],
+  'prod_assistant_neurond_api': [MINH, QUYEN, QUOC],
   // --- Production: Assistant Atlas ---
-  'prod_assistant_atlas': [MINH, QUYEN],
+  'prod_assistant_atlas': [MINH, QUYEN, QUOC],
   // --- Production: Document Intelligent (+ Son) ---
-  'prod_document_intelligent': [MINH, QUYEN, SON],
+  'prod_document_intelligent': [MINH, QUYEN, SON, QUOC],
   // --- Production: Meeting Agent (+ Tri) ---
-  'prod_meeting_agent': [MINH, QUYEN, TRI],
+  'prod_meeting_agent': [MINH, QUYEN, TRI, QUOC],
   // --- Production: Proposal (+ Son) ---
-  'prod_proposal': [MINH, QUYEN, SON],
-  'prod_proposal_api': [MINH, QUYEN, SON],
+  'prod_proposal': [MINH, QUYEN, SON, QUOC],
+  'prod_proposal_api': [MINH, QUYEN, SON, QUOC],
   // --- Staging: Assistant Neurond AI ---
   'staging_assistant_neurond': [MINH, QUYEN],
   'staging_assistant_neurond_api': [MINH, QUYEN],
@@ -81,7 +82,7 @@ const MONITOR_MENTIONS: Record<string, Array<{ name: string; email: string }>> =
   'staging_proposal': [MINH, QUYEN, SON],
   'staging_proposal_api': [MINH, QUYEN, SON],
   // --- Production: Docs ---
-  'prod_docs_neurond': [MINH, QUYEN, QUYEN_B],
+  'prod_docs_neurond': [MINH, QUYEN, QUYEN_B, QUOC],
   // --- Staging: Docs ---
   'staging_docs_neurond': [MINH, QUYEN, QUYEN_B],
   // --- Fallback ---
