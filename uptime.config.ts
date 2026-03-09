@@ -107,6 +107,51 @@ let notificationQueue: NotificationQueueItem[] = []
 // Without this guard, every error-reason change sends a new DOWN notification.
 const notifiedDownMonitors = new Set<string>()
 
+// Build the Adaptive Card payload for MS Teams.
+// Supports both old Incoming Webhook connectors and new Workflows / Power Automate webhooks.
+// Old connectors: wrap card in { type: "message", attachments: [...] }
+// New Workflows:  send the Adaptive Card directly as the body
+function buildTeamsPayload(
+  webhookUrl: string,
+  body: any[],
+  actions: any[],
+  mentionEntities: any[],
+) {
+  const card = {
+    type: 'AdaptiveCard',
+    $schema: 'https://adaptivecards.io/schemas/adaptive-card.json',
+    version: '1.4',
+    body,
+    actions,
+    msteams: {
+      entities: mentionEntities,
+    },
+  }
+
+  // Old Incoming Webhook connector URLs contain '/IncomingWebhook/' on the
+  // legacy *.webhook.office.com host (not outlook.webhook.office.com).
+  // New Workflows webhooks (outlook.webhook.office.com or *.logic.azure.com)
+  // expect the Adaptive Card directly.
+  const isLegacyConnector =
+    webhookUrl.includes('.webhook.office.com/') &&
+    !webhookUrl.includes('outlook.webhook.office.com/')
+
+  if (isLegacyConnector) {
+    return {
+      type: 'message',
+      attachments: [
+        {
+          contentType: 'application/vnd.microsoft.card.adaptive',
+          contentUrl: null,
+          content: card,
+        },
+      ],
+    }
+  }
+
+  return card
+}
+
 // Build and send an Adaptive Card notification to MS Teams with @mentions (single monitor)
 async function sendTeamsNotification(
   webhookUrl: string,
@@ -146,7 +191,7 @@ async function sendTeamsNotification(
   // Build Adaptive Card body
   const body: any[] = []
 
-  // Header container with colored background — environment shown prominently
+  // Header container with colored background — "Production - Service Name" shown prominently
   body.push({
     type: 'Container',
     style: isUp ? 'good' : 'attention',
@@ -157,17 +202,9 @@ async function sendTeamsNotification(
         size: 'Large',
         weight: 'Bolder',
         text: isUp
-          ? `✅ ${environment.toUpperCase()} — Recovered`
-          : `🚨 ${environment.toUpperCase()} — Service Down`,
+          ? `✅ ${environment} — ${monitor.name} Recovered`
+          : `🚨 ${environment} — ${monitor.name} Down`,
         wrap: true,
-      },
-      {
-        type: 'TextBlock',
-        size: 'Medium',
-        weight: 'Bolder',
-        text: monitor.name,
-        wrap: true,
-        spacing: 'Small',
       },
     ],
   })
@@ -179,6 +216,7 @@ async function sendTeamsNotification(
       separator: true,
       spacing: 'Medium',
       facts: [
+        { title: 'Service', value: `${environment} - ${monitor.name}` },
         { title: 'Status', value: '🟢 Recovered' },
         { title: 'Downtime', value: `${downtimeDuration} min` },
         { title: 'Recovered at', value: timeNowFormatted },
@@ -191,6 +229,7 @@ async function sendTeamsNotification(
       separator: true,
       spacing: 'Medium',
       facts: [
+        { title: 'Service', value: `${environment} - ${monitor.name}` },
         { title: 'Status', value: '🔴 DOWN' },
         { title: 'Since', value: timeStartFormatted },
         { title: 'Duration', value: `${downtimeDuration} min` },
@@ -220,26 +259,7 @@ async function sendTeamsNotification(
     })
   }
 
-  // Assemble full Adaptive Card payload for MS Teams webhook
-  const payload = {
-    type: 'message',
-    attachments: [
-      {
-        contentType: 'application/vnd.microsoft.card.adaptive',
-        contentUrl: null,
-        content: {
-          type: 'AdaptiveCard',
-          $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
-          version: '1.4',
-          body,
-          actions,
-          msteams: {
-            entities: mentionEntities,
-          },
-        },
-      },
-    ],
-  }
+  const payload = buildTeamsPayload(webhookUrl, body, actions, mentionEntities)
 
   try {
     const resp = await fetch(webhookUrl, {
@@ -305,7 +325,8 @@ async function sendGroupedTeamsNotification(
 
   const body: any[] = []
 
-  // Header — environment shown prominently
+  // Header — environment and service names shown prominently
+  const monitorNamesList = items.map((i) => i.monitor.name).join(', ')
   body.push({
     type: 'Container',
     style: isUp ? 'good' : 'attention',
@@ -316,13 +337,13 @@ async function sendGroupedTeamsNotification(
         size: 'Large',
         weight: 'Bolder',
         text: isUp
-          ? `✅ ${environmentLabel.toUpperCase()} — ${items.length} Services Recovered`
-          : `🚨 ${environmentLabel.toUpperCase()} — ${items.length} Services Down`,
+          ? `✅ ${environmentLabel} — ${items.length} Services Recovered`
+          : `🚨 ${environmentLabel} — ${items.length} Services Down`,
         wrap: true,
       },
       {
         type: 'TextBlock',
-        text: `${items.length} monitors affected`,
+        text: monitorNamesList,
         wrap: true,
         spacing: 'Small',
       },
@@ -343,13 +364,12 @@ async function sendGroupedTeamsNotification(
           {
             type: 'TextBlock',
             weight: 'Bolder',
-            text: item.monitor.name,
+            text: `${environment} - ${item.monitor.name}`,
             wrap: true,
           },
           {
             type: 'FactSet',
             facts: [
-              { title: 'Environment', value: environment },
               { title: 'Downtime', value: `${downtimeDuration} min` },
               { title: 'Recovered at', value: dateFormatter.format(new Date(item.timeNow * 1000)) },
             ],
@@ -365,13 +385,12 @@ async function sendGroupedTeamsNotification(
           {
             type: 'TextBlock',
             weight: 'Bolder',
-            text: item.monitor.name,
+            text: `${environment} - ${item.monitor.name}`,
             wrap: true,
           },
           {
             type: 'FactSet',
             facts: [
-              { title: 'Environment', value: environment },
               { title: 'Since', value: dateFormatter.format(new Date(item.timeIncidentStart * 1000)) },
               { title: 'Duration', value: `${downtimeDuration} min` },
               { title: 'Issue', value: item.reason || 'Unknown' },
@@ -406,25 +425,7 @@ async function sendGroupedTeamsNotification(
     })
   }
 
-  const payload = {
-    type: 'message',
-    attachments: [
-      {
-        contentType: 'application/vnd.microsoft.card.adaptive',
-        contentUrl: null,
-        content: {
-          type: 'AdaptiveCard',
-          $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
-          version: '1.4',
-          body,
-          actions,
-          msteams: {
-            entities: mentionEntities,
-          },
-        },
-      },
-    ],
-  }
+  const payload = buildTeamsPayload(webhookUrl, body, actions, mentionEntities)
 
   const monitorNames = items.map((i) => i.monitor.name).join(', ')
   try {
