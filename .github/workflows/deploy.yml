@@ -101,6 +101,18 @@ jobs:
           TF_VAR_TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
           D1_ID: ${{ env.D1_ID }}
 
+      # Terraform with no persisted state cannot reliably update secret bindings
+      # (the Cloudflare API never returns secret text on import, so Terraform can't diff).
+      # Use wrangler to explicitly set the secret after every deploy.
+      - name: Set worker secrets via wrangler
+        if: ${{ secrets.TEAMS_WEBHOOK_URL != '' }}
+        run: |
+          echo "$TEAMS_WEBHOOK_URL" | npx wrangler secret put TEAMS_WEBHOOK_URL --name uptimeflare_worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.fetch_account_id.outputs.account_id }}
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+
       # Currently Terraform Cloudflare provider doesn't support direct upload, use wrangler to upload instead.
       - name: Upload pages
         run: |
