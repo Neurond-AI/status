@@ -11,6 +11,9 @@ const pageConfig: PageConfig = {
     { link: 'https://neurond.com', label: 'Neurond AI' },
     { link: 'https://github.com/Neurond-AI', label: 'GitHub' },
   ],
+  maintenances: {
+    upcomingColor: 'gray',
+  },
   customFooter: '',
   group: {
     'Production': [
@@ -56,21 +59,20 @@ const QUYEN = { name: 'Quyen Do Duc', email: 'quyen.do@orientsoftware.com' }
 const QUYEN_B = { name: 'Quyen Bui', email: 'quyen.bui@orientsoftware.com' }
 const TRI = { name: 'Tri Le Duc', email: 'tri.le@orientsoftware.com' }
 const SON = { name: 'Son Tran Van', email: 'son.tran@orientsoftware.com' }
-const QUOC = { name: 'Quoc Nguyen Phu', email: 'quoc.nguyenphu@orientsoftware.com' }
 
 const MONITOR_MENTIONS: Record<string, Array<{ name: string; email: string }>> = {
   // --- Production: Assistant Neurond AI ---
-  'prod_assistant_neurond': [MINH, QUYEN, QUOC],
-  'prod_assistant_neurond_api': [MINH, QUYEN, QUOC],
+  'prod_assistant_neurond': [MINH, QUYEN],
+  'prod_assistant_neurond_api': [MINH, QUYEN],
   // --- Production: Assistant Atlas ---
-  'prod_assistant_atlas': [MINH, QUYEN, QUOC],
+  'prod_assistant_atlas': [MINH, QUYEN],
   // --- Production: Document Intelligent (+ Son) ---
-  'prod_document_intelligent': [MINH, QUYEN, SON, QUOC],
+  'prod_document_intelligent': [MINH, QUYEN, SON],
   // --- Production: Meeting Agent (+ Tri) ---
-  'prod_meeting_agent': [MINH, QUYEN, TRI, QUOC],
+  'prod_meeting_agent': [MINH, QUYEN, TRI],
   // --- Production: Proposal (+ Son) ---
-  'prod_proposal': [MINH, QUYEN, SON, QUOC],
-  'prod_proposal_api': [MINH, QUYEN, SON, QUOC],
+  'prod_proposal': [MINH, QUYEN, SON],
+  'prod_proposal_api': [MINH, QUYEN, SON],
   // --- Staging: Assistant Neurond AI ---
   'staging_assistant_neurond': [MINH, QUYEN],
   'staging_assistant_neurond_api': [MINH, QUYEN],
@@ -82,7 +84,7 @@ const MONITOR_MENTIONS: Record<string, Array<{ name: string; email: string }>> =
   'staging_proposal': [MINH, QUYEN, SON],
   'staging_proposal_api': [MINH, QUYEN, SON],
   // --- Production: Docs ---
-  'prod_docs_neurond': [MINH, QUYEN, QUYEN_B, QUOC],
+  'prod_docs_neurond': [MINH, QUYEN, QUYEN_B],
   // --- Staging: Docs ---
   'staging_docs_neurond': [MINH, QUYEN, QUYEN_B],
   // --- Fallback ---
@@ -104,6 +106,51 @@ let notificationQueue: NotificationQueueItem[] = []
 // but also when the error reason changes while still DOWN (e.g. "timeout" → "connection refused").
 // Without this guard, every error-reason change sends a new DOWN notification.
 const notifiedDownMonitors = new Set<string>()
+
+// Build the Adaptive Card payload for MS Teams.
+// Supports both old Incoming Webhook connectors and new Workflows / Power Automate webhooks.
+// Old connectors: wrap card in { type: "message", attachments: [...] }
+// New Workflows:  send the Adaptive Card directly as the body
+function buildTeamsPayload(
+  webhookUrl: string,
+  body: any[],
+  actions: any[],
+  mentionEntities: any[],
+) {
+  const card = {
+    type: 'AdaptiveCard',
+    $schema: 'https://adaptivecards.io/schemas/adaptive-card.json',
+    version: '1.4',
+    body,
+    actions,
+    msteams: {
+      entities: mentionEntities,
+    },
+  }
+
+  // Old Incoming Webhook connector URLs contain '/IncomingWebhook/' on the
+  // legacy *.webhook.office.com host (not outlook.webhook.office.com).
+  // New Workflows webhooks (outlook.webhook.office.com or *.logic.azure.com)
+  // expect the Adaptive Card directly.
+  const isLegacyConnector =
+    webhookUrl.includes('.webhook.office.com/') &&
+    !webhookUrl.includes('outlook.webhook.office.com/')
+
+  if (isLegacyConnector) {
+    return {
+      type: 'message',
+      attachments: [
+        {
+          contentType: 'application/vnd.microsoft.card.adaptive',
+          contentUrl: null,
+          content: card,
+        },
+      ],
+    }
+  }
+
+  return card
+}
 
 // Build and send an Adaptive Card notification to MS Teams with @mentions (single monitor)
 async function sendTeamsNotification(
@@ -144,7 +191,7 @@ async function sendTeamsNotification(
   // Build Adaptive Card body
   const body: any[] = []
 
-  // Header container with colored background — environment shown prominently
+  // Header container with colored background — "Production - Service Name" shown prominently
   body.push({
     type: 'Container',
     style: isUp ? 'good' : 'attention',
@@ -155,17 +202,9 @@ async function sendTeamsNotification(
         size: 'Large',
         weight: 'Bolder',
         text: isUp
-          ? `✅ ${environment.toUpperCase()} — Recovered`
-          : `🚨 ${environment.toUpperCase()} — Service Down`,
+          ? `✅ ${environment} — ${monitor.name} Recovered`
+          : `🚨 ${environment} — ${monitor.name} Down`,
         wrap: true,
-      },
-      {
-        type: 'TextBlock',
-        size: 'Medium',
-        weight: 'Bolder',
-        text: monitor.name,
-        wrap: true,
-        spacing: 'Small',
       },
     ],
   })
@@ -177,6 +216,7 @@ async function sendTeamsNotification(
       separator: true,
       spacing: 'Medium',
       facts: [
+        { title: 'Service', value: `${environment} - ${monitor.name}` },
         { title: 'Status', value: '🟢 Recovered' },
         { title: 'Downtime', value: `${downtimeDuration} min` },
         { title: 'Recovered at', value: timeNowFormatted },
@@ -189,6 +229,7 @@ async function sendTeamsNotification(
       separator: true,
       spacing: 'Medium',
       facts: [
+        { title: 'Service', value: `${environment} - ${monitor.name}` },
         { title: 'Status', value: '🔴 DOWN' },
         { title: 'Since', value: timeStartFormatted },
         { title: 'Duration', value: `${downtimeDuration} min` },
@@ -218,26 +259,7 @@ async function sendTeamsNotification(
     })
   }
 
-  // Assemble full Adaptive Card payload for MS Teams webhook
-  const payload = {
-    type: 'message',
-    attachments: [
-      {
-        contentType: 'application/vnd.microsoft.card.adaptive',
-        contentUrl: null,
-        content: {
-          type: 'AdaptiveCard',
-          $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
-          version: '1.4',
-          body,
-          actions,
-          msteams: {
-            entities: mentionEntities,
-          },
-        },
-      },
-    ],
-  }
+  const payload = buildTeamsPayload(webhookUrl, body, actions, mentionEntities)
 
   try {
     const resp = await fetch(webhookUrl, {
@@ -303,7 +325,8 @@ async function sendGroupedTeamsNotification(
 
   const body: any[] = []
 
-  // Header — environment shown prominently
+  // Header — environment and service names shown prominently
+  const monitorNamesList = items.map((i) => i.monitor.name).join(', ')
   body.push({
     type: 'Container',
     style: isUp ? 'good' : 'attention',
@@ -314,13 +337,13 @@ async function sendGroupedTeamsNotification(
         size: 'Large',
         weight: 'Bolder',
         text: isUp
-          ? `✅ ${environmentLabel.toUpperCase()} — ${items.length} Services Recovered`
-          : `🚨 ${environmentLabel.toUpperCase()} — ${items.length} Services Down`,
+          ? `✅ ${environmentLabel} — ${items.length} Services Recovered`
+          : `🚨 ${environmentLabel} — ${items.length} Services Down`,
         wrap: true,
       },
       {
         type: 'TextBlock',
-        text: `${items.length} monitors affected`,
+        text: monitorNamesList,
         wrap: true,
         spacing: 'Small',
       },
@@ -341,13 +364,12 @@ async function sendGroupedTeamsNotification(
           {
             type: 'TextBlock',
             weight: 'Bolder',
-            text: item.monitor.name,
+            text: `${environment} - ${item.monitor.name}`,
             wrap: true,
           },
           {
             type: 'FactSet',
             facts: [
-              { title: 'Environment', value: environment },
               { title: 'Downtime', value: `${downtimeDuration} min` },
               { title: 'Recovered at', value: dateFormatter.format(new Date(item.timeNow * 1000)) },
             ],
@@ -363,13 +385,12 @@ async function sendGroupedTeamsNotification(
           {
             type: 'TextBlock',
             weight: 'Bolder',
-            text: item.monitor.name,
+            text: `${environment} - ${item.monitor.name}`,
             wrap: true,
           },
           {
             type: 'FactSet',
             facts: [
-              { title: 'Environment', value: environment },
               { title: 'Since', value: dateFormatter.format(new Date(item.timeIncidentStart * 1000)) },
               { title: 'Duration', value: `${downtimeDuration} min` },
               { title: 'Issue', value: item.reason || 'Unknown' },
@@ -404,25 +425,7 @@ async function sendGroupedTeamsNotification(
     })
   }
 
-  const payload = {
-    type: 'message',
-    attachments: [
-      {
-        contentType: 'application/vnd.microsoft.card.adaptive',
-        contentUrl: null,
-        content: {
-          type: 'AdaptiveCard',
-          $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
-          version: '1.4',
-          body,
-          actions,
-          msteams: {
-            entities: mentionEntities,
-          },
-        },
-      },
-    ],
-  }
+  const payload = buildTeamsPayload(webhookUrl, body, actions, mentionEntities)
 
   const monitorNames = items.map((i) => i.monitor.name).join(', ')
   try {
@@ -444,8 +447,69 @@ async function sendGroupedTeamsNotification(
 // You can define multiple maintenances here
 // During maintenance, an alert will be shown at status page
 // Also, related downtime notifications will be skipped (if any)
-// Of course, you can leave it empty if you don't need this feature
-const maintenances: MaintenanceConfig[] = []
+//
+// Schedule (GMT+7 / Asia/Ho_Chi_Minh):
+//   Monday–Friday:  6:00 PM → 8:00 AM next day
+//   Weekend:        Friday 6:00 PM → Monday 8:00 AM (all day Saturday & Sunday)
+const maintenances: MaintenanceConfig[] = [
+  ...(function () {
+    const schedules: MaintenanceConfig[] = []
+    const today = new Date()
+
+    // Generate maintenance windows for -1 to +2 months
+    const startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+    const endDate = new Date(today.getFullYear(), today.getMonth() + 3, 0)
+
+    const allStagingMonitors = [
+      'staging_assistant_neurond',
+      'staging_assistant_neurond_api',
+      'staging_document_intelligent',
+      'staging_meeting_agent',
+      'staging_proposal',
+      'staging_proposal_api',
+      'staging_docs_neurond',
+    ]
+
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const fmt = (d: Date) =>
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+
+    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+      const dow = d.getDay() // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat
+
+      if (dow >= 1 && dow <= 4) {
+        // Monday–Thursday: 6 PM → next day 8 AM
+        const next = new Date(d)
+        next.setDate(next.getDate() + 1)
+
+        schedules.push({
+          monitors: allStagingMonitors,
+          title: 'Nightly Maintenance',
+          body: 'Scheduled nightly maintenance window (6:00 PM – 8:00 AM GMT+7)',
+          start: `${fmt(d)}T18:00:00+07:00`,
+          end: `${fmt(next)}T08:00:00+07:00`,
+          color: 'blue',
+        })
+      } else if (dow === 5) {
+        // Friday: 6 PM → Monday 8 AM (covers entire weekend)
+        const monday = new Date(d)
+        monday.setDate(monday.getDate() + 3)
+
+        schedules.push({
+          monitors: allStagingMonitors,
+          title: 'Weekend Maintenance',
+          body: 'Scheduled weekend maintenance window (Friday 6:00 PM – Monday 8:00 AM GMT+7)',
+          start: `${fmt(d)}T18:00:00+07:00`,
+          end: `${fmt(monday)}T08:00:00+07:00`,
+          color: 'blue',
+        })
+      }
+      // Saturday & Sunday are covered by Friday's entry
+    }
+
+    return schedules
+  })(),
+]
 
 const workerConfig: WorkerConfig = {
   monitors: [
