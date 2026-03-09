@@ -105,9 +105,12 @@ jobs:
       # (the Cloudflare API never returns secret text on import, so Terraform can't diff).
       # Use wrangler to explicitly set the secret after every deploy.
       - name: Set worker secrets via wrangler
-        if: ${{ secrets.TEAMS_WEBHOOK_URL != '' }}
         run: |
-          echo "$TEAMS_WEBHOOK_URL" | npx wrangler secret put TEAMS_WEBHOOK_URL --name uptimeflare_worker
+          if [ -n "$TEAMS_WEBHOOK_URL" ]; then
+            echo "$TEAMS_WEBHOOK_URL" | npx wrangler secret put TEAMS_WEBHOOK_URL --name uptimeflare_worker
+          else
+            echo "TEAMS_WEBHOOK_URL secret is not set, skipping"
+          fi
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ steps.fetch_account_id.outputs.account_id }}
