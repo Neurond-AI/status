@@ -146,6 +146,18 @@ async function webhookNotify(webhook: WebhookConfig, message: string) {
   }
 }
 
+// Check if a monitor is currently in an active maintenance window.
+// If a maintenance has no monitors specified (or empty array), it applies to ALL monitors.
+function isMonitorInMaintenance(monitorId: string, timeNowSeconds: number): boolean {
+  const now = new Date(timeNowSeconds * 1000)
+  return maintenances.some(
+    (m) =>
+      now >= new Date(m.start) &&
+      (!m.end || now <= new Date(m.end)) &&
+      (!m.monitors || m.monitors.length === 0 || m.monitors.includes(monitorId))
+  )
+}
+
 // Auxiliary function to format notification and send it via webhook
 const formatAndNotify = async (
   monitor: MonitorTarget,
@@ -162,16 +174,7 @@ const formatAndNotify = async (
   }
 
   // Skip notification if monitor is in maintenance
-  const maintenanceList = maintenances
-    .filter(
-      (m) =>
-        new Date(timeNow * 1000) >= new Date(m.start) &&
-        (!m.end || new Date(timeNow * 1000) <= new Date(m.end))
-    )
-    .map((e) => e.monitors || [])
-    .flat()
-
-  if (maintenanceList.includes(monitor.id)) {
+  if (isMonitorInMaintenance(monitor.id, timeNow)) {
     console.log(`Skipping notification for ${monitor.name} (in maintenance)`)
     return
   }
@@ -198,4 +201,5 @@ export {
   webhookNotify,
   formatStatusChangeNotification,
   formatAndNotify,
+  isMonitorInMaintenance,
 }

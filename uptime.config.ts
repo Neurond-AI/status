@@ -42,8 +42,9 @@ const pageConfig: PageConfig = {
 // Microsoft Teams Notification Configuration
 // =============================================
 
-// MS Teams Incoming Webhook URL is stored as a Cloudflare Worker secret (env.TEAMS_WEBHOOK_URL)
+// MS Teams Webhook URL is stored as a Cloudflare Worker secret (env.TEAMS_WEBHOOK_URL)
 // Managed via GitHub secret → Terraform variable → Worker secret_text binding (see deploy.tf)
+// Supports both old O365 connector (webhook.office.com) and Workflows (Power Automate) URLs
 
 // Grace period in minutes before sending DOWN notification
 // Must match the notification.gracePeriod value below
@@ -278,6 +279,7 @@ async function sendTeamsNotification(
 }
 
 // Helper: check if notification should be skipped for a monitor
+// This serves as defense-in-depth — the scheduler (index.ts) also checks maintenance centrally
 function shouldSkipTeamsNotification(monitorId: string, timeNow: number): boolean {
   if (SKIP_NOTIFICATION_IDS.includes(monitorId)) {
     return true
@@ -287,7 +289,7 @@ function shouldSkipTeamsNotification(monitorId: string, timeNow: number): boolea
     (m) =>
       now >= new Date(m.start) &&
       (!m.end || now <= new Date(m.end)) &&
-      m.monitors?.includes(monitorId),
+      (!m.monitors || m.monitors.length === 0 || m.monitors.includes(monitorId)),
   )
   return inMaintenance
 }
