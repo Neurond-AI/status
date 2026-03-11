@@ -284,14 +284,20 @@ function shouldSkipTeamsNotification(monitorId: string, timeNow: number): boolea
   if (SKIP_NOTIFICATION_IDS.includes(monitorId)) {
     return true
   }
+
+  // Dynamic staging maintenance check (reliable, doesn't depend on module-level Date)
+  if (monitorId.startsWith('staging_') && isInStagingMaintenanceWindow(timeNow)) {
+    return true
+  }
+
+  // Also check static maintenance windows (for ad-hoc/one-off maintenances)
   const now = new Date(timeNow * 1000)
-  const inMaintenance = maintenances.some(
+  return maintenances.some(
     (m) =>
       now >= new Date(m.start) &&
       (!m.end || now <= new Date(m.end)) &&
       (!m.monitors || m.monitors.length === 0 || m.monitors.includes(monitorId)),
   )
-  return inMaintenance
 }
 
 // Build and send a grouped Adaptive Card for multiple monitors sharing the same maintainers
@@ -453,65 +459,93 @@ async function sendGroupedTeamsNotification(
 // Schedule (GMT+7 / Asia/Ho_Chi_Minh):
 //   Monday–Friday:  6:00 PM → 8:00 AM next day
 //   Weekend:        Friday 6:00 PM → Monday 8:00 AM (all day Saturday & Sunday)
-const maintenances: MaintenanceConfig[] = [
-  ...(function () {
-    const schedules: MaintenanceConfig[] = []
-    const today = new Date()
 
-    // Generate maintenance windows for -1 to +2 months
-    const startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1)
-    const endDate = new Date(today.getFullYear(), today.getMonth() + 3, 0)
+// Generate maintenance window entries for a date range around the given reference date.
+// Used both at module level (for frontend display) and dynamically at runtime (for worker checks).
+function generateStagingMaintenances(referenceDate: Date): MaintenanceConfig[] {
+  const schedules: MaintenanceConfig[] = []
 
-    const allStagingMonitors = [
-      'staging_assistant_neurond',
-      'staging_assistant_neurond_api',
-      'staging_document_intelligent',
-      'staging_meeting_agent',
-      'staging_proposal',
-      'staging_proposal_api',
-      'staging_docs_neurond',
-    ]
+  // Generate maintenance windows for -1 to +2 months
+  const startDate = new Date(referenceDate.getFullYear(), referenceDate.getMonth() - 1, 1)
+  const endDate = new Date(referenceDate.getFullYear(), referenceDate.getMonth() + 3, 0)
 
-    const pad = (n: number) => String(n).padStart(2, '0')
-    const fmt = (d: Date) =>
-      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  const allStagingMonitors = [
+    'staging_assistant_neurond',
+    'staging_assistant_neurond_api',
+    'staging_document_intelligent',
+    'staging_meeting_agent',
+    'staging_proposal',
+    'staging_proposal_api',
+    'staging_docs_neurond',
+  ]
 
-    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-      const dow = d.getDay() // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 
-      if (dow >= 1 && dow <= 4) {
-        // Monday–Thursday: 6 PM → next day 8 AM
-        const next = new Date(d)
-        next.setDate(next.getDate() + 1)
+  for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+    const dow = d.getDay() // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat
 
-        schedules.push({
-          monitors: allStagingMonitors,
-          title: 'Nightly Maintenance',
-          body: 'Scheduled nightly maintenance window (6:00 PM – 8:00 AM GMT+7)',
-          start: `${fmt(d)}T18:00:00+07:00`,
-          end: `${fmt(next)}T08:00:00+07:00`,
-          color: 'blue',
-        })
-      } else if (dow === 5) {
-        // Friday: 6 PM → Monday 8 AM (covers entire weekend)
-        const monday = new Date(d)
-        monday.setDate(monday.getDate() + 3)
+    if (dow >= 1 && dow <= 4) {
+      // Monday–Thursday: 6 PM → next day 8 AM
+      const next = new Date(d)
+      next.setDate(next.getDate() + 1)
 
-        schedules.push({
-          monitors: allStagingMonitors,
-          title: 'Weekend Maintenance',
-          body: 'Scheduled weekend maintenance window (Friday 6:00 PM – Monday 8:00 AM GMT+7)',
-          start: `${fmt(d)}T18:00:00+07:00`,
-          end: `${fmt(monday)}T08:00:00+07:00`,
-          color: 'blue',
-        })
-      }
-      // Saturday & Sunday are covered by Friday's entry
+      schedules.push({
+        monitors: allStagingMonitors,
+        title: 'Nightly Maintenance',
+        body: 'Scheduled nightly maintenance window (6:00 PM – 8:00 AM GMT+7)',
+        start: `${fmt(d)}T18:00:00+07:00`,
+        end: `${fmt(next)}T08:00:00+07:00`,
+        color: 'blue',
+      })
+    } else if (dow === 5) {
+      // Friday: 6 PM → Monday 8 AM (covers entire weekend)
+      const monday = new Date(d)
+      monday.setDate(monday.getDate() + 3)
+
+      schedules.push({
+        monitors: allStagingMonitors,
+        title: 'Weekend Maintenance',
+        body: 'Scheduled weekend maintenance window (Friday 6:00 PM – Monday 8:00 AM GMT+7)',
+        start: `${fmt(d)}T18:00:00+07:00`,
+        end: `${fmt(monday)}T08:00:00+07:00`,
+        color: 'blue',
+      })
     }
+    // Saturday & Sunday are covered by Friday's entry
+  }
 
-    return schedules
-  })(),
-]
+  return schedules
+}
+
+// Dynamic rule-based check: is the given time within the recurring staging maintenance schedule?
+// This does NOT depend on new Date() at module level, making it reliable in Cloudflare Workers.
+// Schedule (GMT+7): Mon-Thu 6PM→8AM, Fri 6PM→Mon 8AM (weekends fully covered)
+function isInStagingMaintenanceWindow(timeNowSeconds: number): boolean {
+  const now = new Date(timeNowSeconds * 1000)
+  const utcHour = now.getUTCHours()
+  const utcDay = now.getUTCDay() // 0=Sun, 1=Mon, ..., 6=Sat
+
+  // Convert to GMT+7
+  let vietHour = utcHour + 7
+  let vietDay = utcDay
+  if (vietHour >= 24) {
+    vietHour -= 24
+    vietDay = (vietDay + 1) % 7
+  }
+
+  // Saturday (6) or Sunday (0): always in maintenance
+  if (vietDay === 0 || vietDay === 6) return true
+
+  // Weekday: before 8 AM or at/after 6 PM
+  if (vietHour < 8 || vietHour >= 18) return true
+
+  return false
+}
+
+// Static maintenance windows for frontend display (generated at module load time)
+const maintenances: MaintenanceConfig[] = generateStagingMaintenances(new Date())
 
 const workerConfig: WorkerConfig = {
   monitors: [
@@ -767,4 +801,4 @@ const workerConfig: WorkerConfig = {
 }
 
 // Don't edit this line
-export { maintenances, pageConfig, workerConfig }
+export { maintenances, pageConfig, workerConfig, generateStagingMaintenances, isInStagingMaintenanceWindow }
