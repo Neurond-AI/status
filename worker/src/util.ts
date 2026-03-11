@@ -1,5 +1,5 @@
 import { MonitorTarget, WebhookConfig } from '../../types/config'
-import { maintenances, workerConfig } from '../../uptime.config'
+import { maintenances, workerConfig, isInStagingMaintenanceWindow } from '../../uptime.config'
 
 async function getWorkerLocation() {
   const res = await fetch('https://cloudflare.com/cdn-cgi/trace')
@@ -147,8 +147,15 @@ async function webhookNotify(webhook: WebhookConfig, message: string) {
 }
 
 // Check if a monitor is currently in an active maintenance window.
-// If a maintenance has no monitors specified (or empty array), it applies to ALL monitors.
+// Uses a dynamic rule-based check first (reliable in Cloudflare Workers where module-level
+// Date may be stale), then falls back to checking the static maintenances array.
 function isMonitorInMaintenance(monitorId: string, timeNowSeconds: number): boolean {
+  // Dynamic staging maintenance check (doesn't depend on module-level Date)
+  if (monitorId.startsWith('staging_') && isInStagingMaintenanceWindow(timeNowSeconds)) {
+    return true
+  }
+
+  // Also check static maintenance windows (for ad-hoc/one-off maintenances)
   const now = new Date(timeNowSeconds * 1000)
   return maintenances.some(
     (m) =>

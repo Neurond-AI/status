@@ -25,21 +25,34 @@ const Worker = {
     let statusChanged = false
     const currentTimeSecond = Math.round(Date.now() / 1000)
 
-    // Parallel check multiple monitors
+    // Identify monitors currently in a maintenance window — skip checks entirely
+    // (no HTTP requests, no incident tracking, no latency recording)
+    const maintenanceMonitorIds = new Set<string>()
+    for (const monitor of workerConfig.monitors) {
+      if (isMonitorInMaintenance(monitor.id, currentTimeSecond)) {
+        maintenanceMonitorIds.add(monitor.id)
+        state.data.overallUp++ // Count as up during planned maintenance
+        console.log(`Skipping all checks and tracking for ${monitor.name} (in maintenance)`)
+      }
+    }
+
+    // Parallel check multiple monitors (only non-maintenance monitors)
     // Max concurrent connection is 6 limited by Cloudflare Workers, we use 5 here to be safe
     type CheckResult = { id: string; location: string; status: { ping: number; up: boolean; err: string } }
     let checkQueue: Promise<CheckResult>[] = []
     let checkResult: Record<string, CheckResult> = {};
     const limit = pLimit(5);
     for (const monitor of workerConfig.monitors) {
+      if (maintenanceMonitorIds.has(monitor.id)) continue
       checkQueue.push(limit(() => doMonitor(monitor, workerLocation, env)))
     }
     for (const result of await Promise.all(checkQueue)) {
       checkResult[result.id] = result
     }
 
-    // Update each monitor's state based on check results
+    // Update each monitor's state based on check results (skip maintenance monitors)
     for (const monitor of workerConfig.monitors) {
+      if (maintenanceMonitorIds.has(monitor.id)) continue
       console.log(`Processing monitor result: ${monitor.name} (${monitor.id})`)
 
       let monitorStatusChanged = false
@@ -84,21 +97,21 @@ const Worker = {
                   (workerConfig.notification.gracePeriod + 1) * 60 - 30
               ) {
                 await formatAndNotify(monitor, true, lastIncident.start[0], currentTimeSecond, 'OK')
+
+                console.log('Calling config onStatusChange callback...')
+                await workerConfig.callbacks?.onStatusChange?.(
+                  env,
+                  monitor,
+                  true,
+                  lastIncident.start[0],
+                  currentTimeSecond,
+                  'OK'
+                )
               } else {
                 console.log(
-                  `grace period (${workerConfig.notification?.gracePeriod}m) not met, skipping webhook UP notification for ${monitor.name}`
+                  `grace period (${workerConfig.notification?.gracePeriod}m) not met, skipping UP notification for ${monitor.name}`
                 )
               }
-
-              console.log('Calling config onStatusChange callback...')
-              await workerConfig.callbacks?.onStatusChange?.(
-                env,
-                monitor,
-                true,
-                lastIncident.start[0],
-                currentTimeSecond,
-                'OK'
-              )
             } catch (e) {
               console.log('Error calling callback: ')
               console.log(e)
@@ -132,22 +145,24 @@ const Worker = {
           console.log(`Skipping all notifications for ${monitor.name} (in maintenance)`)
         } else {
           try {
-            if (
-              // monitor status changed AND...
+            // Determine if notifications should fire based on grace period.
+            // This applies the same grace period to BOTH the webhook and the
+            // onStatusChange callback (Teams), so Teams notifications also
+            // wait for the grace period before firing.
+            const downDuration = currentTimeSecond - currentIncident.start[0]
+            const gracePeriod = workerConfig.notification?.gracePeriod
+
+            const shouldNotify =
+              // monitor status changed AND (no grace period OR past initial grace window)
               (monitorStatusChanged &&
-                // grace period not set OR ...
-                (workerConfig.notification?.gracePeriod === undefined ||
-                  // have sent a notification for DOWN status
-                  currentTimeSecond - currentIncident.start[0] >=
-                    (workerConfig.notification.gracePeriod + 1) * 60 - 30)) ||
-              // grace period is set AND...
-              (workerConfig.notification?.gracePeriod !== undefined &&
-                // grace period is met
-                currentTimeSecond - currentIncident.start[0] >=
-                  workerConfig.notification.gracePeriod * 60 - 30 &&
-                currentTimeSecond - currentIncident.start[0] <
-                  workerConfig.notification.gracePeriod * 60 + 30)
-            ) {
+                (gracePeriod === undefined ||
+                  downDuration >= (gracePeriod + 1) * 60 - 30)) ||
+              // grace period just met (fires notification at the grace period mark)
+              (gracePeriod !== undefined &&
+                downDuration >= gracePeriod * 60 - 30 &&
+                downDuration < gracePeriod * 60 + 30)
+
+            if (shouldNotify) {
               if (
                 currentIncident.start[0] !== currentTimeSecond &&
                 workerConfig.notification?.skipErrorChangeNotification
@@ -164,18 +179,7 @@ const Worker = {
                   status.err
                 )
               }
-            } else {
-              console.log(
-                `Grace period (${workerConfig.notification
-                  ?.gracePeriod}m) not met or no change (currently down for ${
-                  currentTimeSecond - currentIncident.start[0]
-                }s, changed ${monitorStatusChanged}), skipping webhook DOWN notification for ${
-                  monitor.name
-                }`
-              )
-            }
 
-            if (monitorStatusChanged) {
               console.log('Calling config onStatusChange callback...')
               await workerConfig.callbacks?.onStatusChange?.(
                 env,
@@ -184,6 +188,12 @@ const Worker = {
                 currentIncident.start[0],
                 currentTimeSecond,
                 status.err
+              )
+            } else {
+              console.log(
+                `Grace period (${gracePeriod}m) not met or no change (currently down for ${downDuration}s, changed ${monitorStatusChanged}), skipping DOWN notification for ${
+                  monitor.name
+                }`
               )
             }
           } catch (e) {
