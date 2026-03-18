@@ -48,7 +48,7 @@ const pageConfig: PageConfig = {
 
 // Grace period in minutes before sending DOWN notification
 // Must match the notification.gracePeriod value below
-const NOTIFICATION_GRACE_PERIOD = 5
+const NOTIFICATION_GRACE_PERIOD = 0
 
 // Monitor IDs to exclude from Teams notifications
 const SKIP_NOTIFICATION_IDS: string[] = []
